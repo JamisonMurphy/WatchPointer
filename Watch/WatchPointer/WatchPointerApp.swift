@@ -54,6 +54,7 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     private var elevationZero = 0.0 // elevation when "Center" was pressed
     private var lastTimestamp: TimeInterval?
     private var infoTimer: Timer?
+    private var pendingScroll = 0.0 // Crown turn not sent yet, in pixels
 
     override init() {
         super.init()
@@ -117,7 +118,9 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
             // No dead zone: dropping slow turns is what made the old version slide out of line.
             heading += (r.x * up.x + r.y * up.y + r.z * up.z) * dt
 
-            guard connected, !paused else { return }
+            guard connected else { return }
+            flushScroll()
+            guard !paused else { return }
             sendAim(at: data.timestamp)
         }
     }
@@ -136,6 +139,22 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
 
     /// `at`: when it happened on the watch's clock (same clock as the motion samples). Clicks and drags send the
     /// moment the thumb touched down, so the Mac clicks where you were pointing then, before the tap jolted the watch.
+    /// Each Crown event is a tiny fraction; keep the leftovers so slow turns still add up to scrolling.
+    func scroll(by pixels: Double) {
+        pendingScroll += pixels
+        flushScroll()
+    }
+
+    /// Sent on the fast lane like aim samples, so scrolling never queues behind clicks. If the link is busy,
+    /// the amount waits and goes with the next one (the motion loop retries 100 times a second).
+    private func flushScroll() {
+        let whole = Int16(clamping: Int(pendingScroll))
+        guard whole != 0, let mac, let input, mac.canSendWriteWithoutResponse else { return }
+        pendingScroll -= Double(whole)
+        let bytes = [Kind.scroll.rawValue, UInt8(truncatingIfNeeded: whole), UInt8(truncatingIfNeeded: whole >> 8), 0, 0]
+        mac.writeValue(Data(bytes), for: input, type: .withoutResponse)
+    }
+
     func send(_ kind: Kind, _ a: Int16 = 0, _ b: Int16 = 0, at time: TimeInterval? = nil) {
         guard let mac, let input else { return }
         var bytes = [kind.rawValue,
@@ -238,6 +257,7 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
         output = nil
         connected = false
         paused = false
+        pendingScroll = 0
         infoTimer?.invalidate()
         start()
     }

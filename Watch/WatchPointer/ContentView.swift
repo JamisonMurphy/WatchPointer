@@ -1,9 +1,13 @@
 import SwiftUI
 
+/// Mac scroll distance, in pixels, per unit of Crown turn. Higher = faster scrolling.
+private let crownPixels = 100.0
+
 /// A remote you use without looking: one big pad, three buttons in fixed places, haptics for feedback.
 struct ContentView: View {
     @StateObject private var pointer = Pointer()
     @State private var crown = 0.0
+    @FocusState private var crownFocused: Bool
     @State private var clicks = 0
     @State private var centers = 0
     @State private var confirmUnpair = false
@@ -67,9 +71,13 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
         .animation(.smooth(duration: 0.3), value: pointer.connected)
+        // The Crown only reaches the focused view, so keep focus here rather than on a button.
         .focusable()
+        .focused($crownFocused)
         .digitalCrownRotation($crown)
-        .onChange(of: crown) { old, new in pointer.send(.scroll, Int16(clamping: Int((new - old) * 40))) }
+        .onChange(of: crown) { old, new in pointer.scroll(by: (new - old) * crownPixels) }
+        .onAppear { crownFocused = true }
+        .onChange(of: pointer.connected) { crownFocused = true }
         .sensoryFeedback(.impact(weight: .light), trigger: clicks)
         .sensoryFeedback(.success, trigger: centers)
         .sensoryFeedback(.selection, trigger: pointer.paused)
