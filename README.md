@@ -7,7 +7,7 @@ Use your Apple Watch as a pointer for your Mac. Point it at the screen to move t
 No Wi-Fi, no servers: the watch talks straight to the Mac over Bluetooth.
 
 <p align="center">
-  <img src="docs/demo.gif" width="320" alt="Holding an Apple Watch like a remote and pointing it at a MacBook to move the cursor">
+  <img src="docs/demo.webp" width="320" alt="Holding an Apple Watch like a remote and pointing it at a MacBook to move the cursor">
 </p>
 
 ## What it does
