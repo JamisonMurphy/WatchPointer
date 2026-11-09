@@ -21,7 +21,7 @@ struct ContentView: View {
                 .toolbar {
                     if pointer.connected {
                         // Top-left, next to the clock: which Mac this is, and the way to unpair it.
-                        ToolbarItem(placement: .navigationBarLeading) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button {
                                 unpairTitle = pointer.pairedName ?? "Mac" // fixed while the dialog is up
                                 confirmUnpair = true
