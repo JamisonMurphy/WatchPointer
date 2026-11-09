@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchKit
 
 /// Mac scroll distance, in pixels, per unit of Crown turn. Higher = faster scrolling.
 private let crownPixels = 100.0
@@ -7,6 +8,7 @@ private let crownPixels = 100.0
 struct ContentView: View {
     @StateObject private var pointer = Pointer()
     @State private var crown = 0.0
+    @State private var lastCrown = 0.0
     @FocusState private var crownFocused: Bool
     @State private var clicks = 0
     @State private var centers = 0
@@ -19,7 +21,7 @@ struct ContentView: View {
                 .toolbar {
                     if pointer.connected {
                         // Top-left, next to the clock: which Mac this is, and the way to unpair it.
-                        ToolbarItem(placement: .topBarLeading) {
+                        ToolbarItem(placement: .navigationBarLeading) {
                             Button {
                                 unpairTitle = pointer.pairedName ?? "Mac" // fixed while the dialog is up
                                 confirmUnpair = true
@@ -70,18 +72,27 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black)
-        .animation(.smooth(duration: 0.3), value: pointer.connected)
+        .animation(.easeInOut(duration: 0.3), value: pointer.connected)
         // The Crown only reaches the focused view, so keep focus here rather than on a button.
+        // watchOS 9: the bare `digitalCrownRotation($crown)` form is not available, and the ranged form is clamped
+        // by default, so use a huge continuous range and keep the previous value to get the turn since last time.
         .focusable()
         .focused($crownFocused)
-        .digitalCrownRotation($crown)
-        .onChange(of: crown) { old, new in pointer.scroll(by: (new - old) * crownPixels) }
+        .digitalCrownRotation($crown, from: -1_000_000, through: 1_000_000, by: nil,
+                              sensitivity: .high, isContinuous: true, isHapticFeedbackEnabled: true)
+        .onChange(of: crown) { new in
+            pointer.scroll(by: (new - lastCrown) * crownPixels)
+            lastCrown = new
+        }
         .onAppear { crownFocused = true }
-        .onChange(of: pointer.connected) { crownFocused = true }
-        .sensoryFeedback(.impact(weight: .light), trigger: clicks)
-        .sensoryFeedback(.success, trigger: centers)
-        .sensoryFeedback(.selection, trigger: pointer.paused)
-        .sensoryFeedback(trigger: pointer.connected) { _, now in now ? .start : .stop }
+        // watchOS 10's .sensoryFeedback is replaced by WKInterfaceDevice haptics.
+        .onChange(of: clicks) { _ in WKInterfaceDevice.current().play(.click) }
+        .onChange(of: centers) { _ in WKInterfaceDevice.current().play(.success) }
+        .onChange(of: pointer.paused) { _ in WKInterfaceDevice.current().play(.click) }
+        .onChange(of: pointer.connected) { now in
+            crownFocused = true
+            WKInterfaceDevice.current().play(now ? .start : .stop)
+        }
     }
 }
 
@@ -95,7 +106,6 @@ private struct PairList: View {
             Image(systemName: "laptopcomputer")
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
-                .symbolEffect(.pulse)
         } else {
             ScrollView {
                 VStack(spacing: 6) {
@@ -138,7 +148,6 @@ private struct WaitingForMac: View {
             Image(systemName: "laptopcomputer")
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
-                .symbolEffect(.pulse)
             Text(name)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color(white: 0.6))
@@ -183,11 +192,10 @@ private struct ClickPad: View {
                 Image(systemName: symbol)
                     .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(dragging ? .black : paused ? .orange : Color(white: 0.55))
-                    .contentTransition(.symbolEffect(.replace))
             }
             .scaleEffect(pressing && !dragging ? 0.98 : 1)
-            .animation(.smooth(duration: 0.15), value: pressing)
-            .animation(.smooth(duration: 0.2), value: dragging)
+            .animation(.easeInOut(duration: 0.15), value: pressing)
+            .animation(.easeInOut(duration: 0.2), value: dragging)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -212,7 +220,7 @@ private struct ClickPad: View {
                         }
                     }
             )
-            .sensoryFeedback(trigger: dragging) { _, now in .impact(weight: now ? .heavy : .light) }
+            .onChange(of: dragging) { now in WKInterfaceDevice.current().play(now ? .start : .click) }
     }
 }
 
@@ -229,7 +237,6 @@ private struct PadButton: View {
                     Image(systemName: symbol)
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(tint)
-                        .contentTransition(.symbolEffect(.replace))
                 }
         }
         .buttonStyle(PressStyle())
@@ -241,6 +248,6 @@ private struct PressStyle: ButtonStyle {
         configuration.label
             .opacity(configuration.isPressed ? 0.6 : 1)
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.smooth(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
     }
 }
